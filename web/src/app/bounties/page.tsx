@@ -1,8 +1,11 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 
-// Bounty tier data
+const API_BASE = 'https://api.isnad.md/api/v1/bounties';
+
+// Bounty tier data (static - these define the program)
 const bountyTiers = [
   {
     emoji: '🔴',
@@ -41,66 +44,94 @@ const bountyTiers = [
   },
 ];
 
-// Sample active bounties (static for now)
-const activeBounties = [
-  {
-    id: 1,
-    title: 'Detect obfuscated credential exfiltration patterns',
-    tier: '🔴 Critical Pattern',
-    reward: '1,000 $ISNAD',
-    submissions: 2,
-    status: 'open',
-  },
-  {
-    id: 2,
-    title: 'Reduce false positives on legitimate HTTP clients',
-    tier: '🟠 Detection Improvement',
-    reward: '500 $ISNAD',
-    submissions: 5,
-    status: 'open',
-  },
-  {
-    id: 3,
-    title: 'Scanner rule for malicious WebSocket handlers',
-    tier: '🟡 New Scanner Rule',
-    reward: '200 $ISNAD',
-    submissions: 0,
-    status: 'open',
-  },
-  {
-    id: 4,
-    title: 'Chinese language documentation',
-    tier: '🟢 Documentation',
-    reward: '100 $ISNAD',
-    submissions: 1,
-    status: 'in-review',
-  },
-];
+interface Bounty {
+  id: number;
+  number: number;
+  title: string;
+  tier: string | null;
+  reward: number;
+  status: 'open' | 'closed' | 'in-review';
+  submissions: number;
+  assignee: string | null;
+  url: string;
+  createdAt: string;
+}
 
-// Leaderboard placeholder data
-const topContributors = [
-  { rank: 1, address: '0x7a16...3f8b', bounties: 12, earned: '8,500 $ISNAD' },
-  { rank: 2, address: '0x3d91...e2c4', bounties: 8, earned: '5,200 $ISNAD' },
-  { rank: 3, address: '0x9f44...1a7d', bounties: 6, earned: '3,100 $ISNAD' },
-  { rank: 4, address: '0x2b88...c5f1', bounties: 4, earned: '1,800 $ISNAD' },
-  { rank: 5, address: '0x6e32...9d0a', bounties: 3, earned: '900 $ISNAD' },
-];
+interface BountyStats {
+  totalPaid: number;
+  openBounties: number;
+  closedBounties: number;
+  contributors: number;
+}
+
+interface LeaderboardEntry {
+  rank: number;
+  username: string;
+  bounties: number;
+  earned: number;
+}
 
 export default function BountiesPage() {
+  const [bounties, setBounties] = useState<Bounty[]>([]);
+  const [stats, setStats] = useState<BountyStats | null>(null);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const [bRes, sRes, lRes] = await Promise.all([
+          fetch(API_BASE),
+          fetch(`${API_BASE}/stats`),
+          fetch(`${API_BASE}/leaderboard`),
+        ]);
+
+        if (!bRes.ok || !sRes.ok || !lRes.ok) throw new Error('API error');
+
+        const [bData, sData, lData] = await Promise.all([
+          bRes.json(),
+          sRes.json(),
+          lRes.json(),
+        ]);
+
+        setBounties(bData.data || []);
+        setStats(sData.data || null);
+        setLeaderboard(lData.data || []);
+      } catch (err) {
+        console.error('Failed to load bounty data:', err);
+        setError('Unable to load bounties. Please try again later.');
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
+
+  const activeBounties = bounties.filter(b => b.status === 'open' || b.status === 'in-review');
+
   return (
     <>
-      <HeroSection />
+      <HeroSection stats={stats} loading={loading} />
       <div className="layout-container py-16">
         <EditorialSection label="Active Bounties">
           <p className="text-lg text-[var(--text-secondary)] mb-6">
             Current open bounties awaiting submissions. Claim your reward by submitting a solution 
             via GitHub issues with the <code className="mono text-sm bg-[var(--bg-subtle)] px-2 py-1">bounty</code> label.
           </p>
-          <div className="space-y-4">
-            {activeBounties.map((bounty) => (
-              <BountyCard key={bounty.id} bounty={bounty} />
-            ))}
-          </div>
+          {loading ? (
+            <div className="text-[var(--text-secondary)] py-8 text-center">Loading bounties...</div>
+          ) : error ? (
+            <div className="text-[var(--text-secondary)] py-8 text-center">{error}</div>
+          ) : activeBounties.length === 0 ? (
+            <div className="text-[var(--text-secondary)] py-8 text-center">No active bounties right now. Check back soon!</div>
+          ) : (
+            <div className="space-y-4">
+              {activeBounties.map((bounty) => (
+                <BountyCard key={bounty.id} bounty={bounty} />
+              ))}
+            </div>
+          )}
           <div className="mt-6">
             <Link 
               href="https://github.com/counterspec/isnad/issues?q=is%3Aissue+is%3Aopen+label%3Abounty"
@@ -203,37 +234,49 @@ export default function BountiesPage() {
 
         <EditorialSection label="Leaderboard">
           <p className="text-lg text-[var(--text-secondary)] mb-6">
-            Top contributors who've earned $ISNAD through bounties.
+            Top contributors who&apos;ve earned $ISNAD through bounties.
           </p>
-          <div className="card overflow-hidden p-0">
-            <table className="w-full text-sm">
-              <thead className="border-b-2 border-black bg-[var(--bg-subtle)]">
-                <tr>
-                  <th className="py-3 px-4 text-left font-bold w-16">Rank</th>
-                  <th className="py-3 px-4 text-left font-bold">Address</th>
-                  <th className="py-3 px-4 text-right font-bold hidden sm:table-cell">Bounties</th>
-                  <th className="py-3 px-4 text-right font-bold">Earned</th>
-                </tr>
-              </thead>
-              <tbody>
-                {topContributors.map((contributor, idx) => (
-                  <tr key={contributor.address} className={idx < topContributors.length - 1 ? 'border-b border-[var(--border-dim)]' : ''}>
-                    <td className="py-3 px-4">
-                      {contributor.rank === 1 && '🥇'}
-                      {contributor.rank === 2 && '🥈'}
-                      {contributor.rank === 3 && '🥉'}
-                      {contributor.rank > 3 && `#${contributor.rank}`}
-                    </td>
-                    <td className="py-3 px-4 font-mono">{contributor.address}</td>
-                    <td className="py-3 px-4 text-right text-[var(--text-secondary)] hidden sm:table-cell">{contributor.bounties}</td>
-                    <td className="py-3 px-4 text-right font-bold">{contributor.earned}</td>
+          {loading ? (
+            <div className="text-[var(--text-secondary)] py-8 text-center">Loading leaderboard...</div>
+          ) : leaderboard.length === 0 ? (
+            <div className="text-[var(--text-secondary)] py-8 text-center">
+              No bounties claimed yet. Be the first contributor!
+            </div>
+          ) : (
+            <div className="card overflow-hidden p-0">
+              <table className="w-full text-sm">
+                <thead className="border-b-2 border-black bg-[var(--bg-subtle)]">
+                  <tr>
+                    <th className="py-3 px-4 text-left font-bold w-16">Rank</th>
+                    <th className="py-3 px-4 text-left font-bold">Contributor</th>
+                    <th className="py-3 px-4 text-right font-bold hidden sm:table-cell">Bounties</th>
+                    <th className="py-3 px-4 text-right font-bold">Earned</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {leaderboard.map((contributor, idx) => (
+                    <tr key={contributor.username} className={idx < leaderboard.length - 1 ? 'border-b border-[var(--border-dim)]' : ''}>
+                      <td className="py-3 px-4">
+                        {contributor.rank === 1 && '🥇'}
+                        {contributor.rank === 2 && '🥈'}
+                        {contributor.rank === 3 && '🥉'}
+                        {contributor.rank > 3 && `#${contributor.rank}`}
+                      </td>
+                      <td className="py-3 px-4 font-mono">
+                        <Link href={`https://github.com/${contributor.username}`} target="_blank" className="hover:underline">
+                          @{contributor.username}
+                        </Link>
+                      </td>
+                      <td className="py-3 px-4 text-right text-[var(--text-secondary)] hidden sm:table-cell">{contributor.bounties}</td>
+                      <td className="py-3 px-4 text-right font-bold">{contributor.earned.toLocaleString()} $ISNAD</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           <p className="text-sm text-[var(--text-tertiary)] mt-4">
-            Leaderboard updates weekly. Connect your wallet to see your position.
+            Leaderboard is live from GitHub. Claim bounties to see your name here.
           </p>
         </EditorialSection>
 
@@ -249,7 +292,7 @@ export default function BountiesPage() {
           <div className="mt-8 p-4 bg-[var(--bg-subtle)] border-l-4 border-black">
             <p className="text-sm text-[var(--text-secondary)]">
               <strong className="text-[var(--text-primary)]">Note:</strong> Bounties are paid in $ISNAD tokens on Base L2. 
-              You'll need a connected wallet to receive payment. Tokens are subject to the same vesting 
+              You&apos;ll need a connected wallet to receive payment. Tokens are subject to the same vesting 
               schedule as staking rewards.
             </p>
           </div>
@@ -259,7 +302,7 @@ export default function BountiesPage() {
   );
 }
 
-function HeroSection() {
+function HeroSection({ stats, loading }: { stats: BountyStats | null; loading: boolean }) {
   return (
     <section className="relative bg-black text-white py-16 sm:py-20 md:py-24 border-b-2 border-black overflow-hidden">
       <div className="absolute inset-0 opacity-10">
@@ -297,9 +340,25 @@ function HeroSection() {
           </Link>
         </div>
         <div className="grid grid-cols-3 gap-6 mt-12 pt-8 border-t border-gray-800">
-          <StatBlock value="19,500+" label="$ISNAD paid" />
-          <StatBlock value="47" label="bounties claimed" />
-          <StatBlock value="23" label="contributors" />
+          {loading ? (
+            <>
+              <StatBlock value="—" label="$ISNAD paid" />
+              <StatBlock value="—" label="open bounties" />
+              <StatBlock value="—" label="contributors" />
+            </>
+          ) : stats ? (
+            <>
+              <StatBlock value={stats.totalPaid > 0 ? `${stats.totalPaid.toLocaleString()}` : '0'} label="$ISNAD paid" />
+              <StatBlock value={String(stats.openBounties)} label="open bounties" />
+              <StatBlock value={String(stats.contributors)} label="contributors" />
+            </>
+          ) : (
+            <>
+              <StatBlock value="0" label="$ISNAD paid" />
+              <StatBlock value="0" label="open bounties" />
+              <StatBlock value="0" label="contributors" />
+            </>
+          )}
         </div>
       </div>
     </section>
@@ -320,23 +379,25 @@ function EditorialSection({ label, children }: { label: string; children: React.
   );
 }
 
-function BountyCard({ bounty }: { bounty: typeof activeBounties[0] }) {
+function BountyCard({ bounty }: { bounty: Bounty }) {
   return (
-    <div className="card flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-      <div className="flex-1">
-        <div className="text-xs font-mono text-[var(--text-tertiary)] mb-1">{bounty.tier}</div>
-        <div className="font-semibold text-lg">{bounty.title}</div>
-        <div className="text-sm text-[var(--text-secondary)] mt-1">
-          {bounty.submissions} submission{bounty.submissions !== 1 ? 's' : ''} · 
-          <span className={bounty.status === 'open' ? ' text-[var(--status-green)]' : ' text-[var(--status-warn)]'}>
-            {' '}{bounty.status === 'open' ? 'Open' : 'In Review'}
-          </span>
+    <Link href={bounty.url} target="_blank" className="block">
+      <div className="card flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-[#C5A059] transition-colors">
+        <div className="flex-1">
+          <div className="text-xs font-mono text-[var(--text-tertiary)] mb-1">{bounty.tier || 'Bounty'}</div>
+          <div className="font-semibold text-lg">{bounty.title}</div>
+          <div className="text-sm text-[var(--text-secondary)] mt-1">
+            {bounty.submissions} submission{bounty.submissions !== 1 ? 's' : ''} · 
+            <span className={bounty.status === 'open' ? ' text-[var(--status-green)]' : bounty.status === 'in-review' ? ' text-[var(--status-warn)]' : ''}>
+              {' '}{bounty.status === 'open' ? 'Open' : bounty.status === 'in-review' ? 'In Review' : 'Closed'}
+            </span>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="font-mono font-bold text-xl">{bounty.reward.toLocaleString()} $ISNAD</div>
         </div>
       </div>
-      <div className="text-right">
-        <div className="font-mono font-bold text-xl">{bounty.reward}</div>
-      </div>
-    </div>
+    </Link>
   );
 }
 

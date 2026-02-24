@@ -9,6 +9,7 @@ import trustRouter from './routes/trust';
 import auditorsRouter from './routes/auditors';
 import statsRouter from './routes/stats';
 import debugRouter from './routes/debug';
+import bountiesRouter from './routes/bounties';
 
 dotenv.config();
 
@@ -26,6 +27,9 @@ app.get('/health', (req, res) => {
 
 // Networks endpoint (no network middleware - lists all networks)
 app.use('/api/v1/networks', networksRouter);
+
+// Bounties endpoint (no network middleware - talks to GitHub, not chain)
+app.use('/api/v1/bounties', bountiesRouter);
 
 // Apply network middleware to all other API routes
 app.use('/api/v1', networkMiddleware);
