@@ -71,7 +71,7 @@ export class Indexer {
     if (fromBlock > currentBlock) return;
 
     // Batch in chunks of 2000 blocks
-    const toBlock = fromBlock + 2000n > currentBlock ? currentBlock : fromBlock + 2000n;
+    const toBlock = fromBlock + 500n > currentBlock ? currentBlock : fromBlock + 500n;
     
     console.log(`📦 Syncing blocks ${fromBlock} to ${toBlock}...`);
 
